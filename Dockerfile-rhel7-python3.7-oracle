@@ -1,0 +1,43 @@
+FROM registry.access.redhat.com/rhel7/rhel:latest
+USER root
+WORKDIR /opt/app-root/app
+
+RUN yum -y install make gcc openssl-devel bzip2-devel libffi-devel zlib-devel lzma xz-devel gcc-c++ unixODBC-devel sqlite-devel
+
+RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo > /etc/yum.repos.d/mssql-release.repo
+RUN yum remove unixODBC-utf16 unixODBC-utf16-devel #to avoid conflicts
+RUN ACCEPT_EULA=Y yum install -y msodbcsql17
+RUN ACCEPT_EULA=Y yum install -y mssql-tools
+RUN echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+RUN source ~/.bashrc
+
+COPY ./Python-3.7.11.tgz .
+RUN tar xzf Python-3.7.11.tgz
+RUN ./Python-3.7.11/configure --enable-optimization
+RUN make install
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3 get-pip.py
+RUN pip install wheel
+RUN pip install gql-query-builder
+RUN pip install python-Levenshtein
+RUN ./Python-3.7.11/configure --enable-loadable-sqlite-extensions && make && make install
+
+#Oracle Driverso 
+WORKDIR /opt/oracle
+COPY ./instantclient-basiclite-linuxx64.zip .
+RUN yum -y install unzip glibc \
+    && unzip instantclient-basiclite-linuxx64.zip \
+    && rm -f instantclient-basiclite-linuxx64.zip \
+    && cd /opt/oracle/instantclient* \
+    && rm -f *jdbc* *occi* *mysql* *README *jar uidrvci genezi adrci \
+    && echo /opt/oracle/instantclient* > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && ldconfig
+
+RUN echo $'[Oracle] \n\
+    Description=Oracle Unicode Driver \n\
+    Driver=/opt/oracle/instantclient_21_1/libclntshcore.so.19.1 \n\
+    UsageCount=1 \n\
+    FileUsage=1' >> /etc/odbcinst.ini
+
+WORKDIR /opt/app-root/app
+
+RUN rm -rf /opt/app-root/app/*
